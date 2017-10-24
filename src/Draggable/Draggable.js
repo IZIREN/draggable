@@ -431,11 +431,12 @@ export default class Draggable {
     }
 
     target = closest(target, this.options.draggable);
+    const withinCorrectContainer = closest(target, this.containers);
     const overContainer = sensorEvent.overContainer || this[closestContainer](sensorEvent.target);
     const isLeavingContainer = this.currentOverContainer && (overContainer !== this.currentOverContainer);
     const isLeavingDraggable = this.currentOver && (target !== this.currentOver);
     const isOverContainer = overContainer && (this.currentOverContainer !== overContainer);
-    const isOverDraggable = target && (this.currentOver !== target);
+    const isOverDraggable = withinCorrectContainer && target && (this.currentOver !== target);
 
     if (isLeavingDraggable) {
       const dragOutEvent = new DragOutEvent({

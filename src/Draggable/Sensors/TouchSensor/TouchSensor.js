@@ -7,64 +7,87 @@ import {
   DragStopSensorEvent,
 } from './../SensorEvent';
 
+const onTouchStart = Symbol('onTouchStart');
+const onTouchHold = Symbol('onTouchHold');
+const onTouchEnd = Symbol('onTouchEnd');
+const onTouchMove = Symbol('onTouchMove');
+const onScroll = Symbol('onScroll');
+
+/**
+ * This sensor picks up native browser touch events and dictates drag operations
+ * @class TouchSensor
+ * @module TouchSensor
+ * @extends Sensor
+ */
 export default class TouchSensor extends Sensor {
+
+  /**
+   * TouchSensor constructor.
+   * @constructs TouchSensor
+   * @param {HTMLElement[]|NodeList|HTMLElement} containers - Containers
+   * @param {Object} options - Options
+   */
   constructor(containers = [], options = {}) {
     super(containers, options);
 
-    this.dragging = false;
-    this.currentContainer = null;
+    /**
+     * Closest scrollable container
+     * @property currentScrollableParent
+     * @type {HTMLElement}
+     */
     this.currentScrollableParent = null;
 
-    this._onTouchStart = this._onTouchStart.bind(this);
-    this._onTouchHold = this._onTouchHold.bind(this);
-    this._onTouchEnd = this._onTouchEnd.bind(this);
-    this._onTouchMove = this._onTouchMove.bind(this);
-    this._onScroll = this._onScroll.bind(this);
+    this[onTouchStart] = this[onTouchStart].bind(this);
+    this[onTouchHold] = this[onTouchHold].bind(this);
+    this[onTouchEnd] = this[onTouchEnd].bind(this);
+    this[onTouchMove] = this[onTouchMove].bind(this);
+    this[onScroll] = this[onScroll].bind(this);
   }
 
+  /**
+   * Attaches sensors event listeners to the DOM
+   */
   attach() {
-    for (const container of this.containers) {
-      container.addEventListener('touchstart', this._onTouchStart, false);
-    }
-
-    document.addEventListener('touchend', this._onTouchEnd, false);
-    document.addEventListener('touchcancel', this._onTouchEnd, false);
-    document.addEventListener('touchmove', this._onTouchMove, false);
+    document.addEventListener('touchstart', this[onTouchStart], {passive: false});
   }
 
+  /**
+   * Detaches sensors event listeners to the DOM
+   */
   detach() {
-    for (const container of this.containers) {
-      container.removeEventListener('touchstart', this._onTouchStart, false);
-    }
-
-    document.removeEventListener('touchend', this._onTouchEnd, false);
-    document.removeEventListener('touchcancel', this._onTouchEnd, false);
-    document.removeEventListener('touchmove', this._onTouchMove, false);
+    document.removeEventListener('touchstart', this[onTouchStart], {passive: false});
   }
 
-  _onScroll() {
+  [onScroll]() {
     // Cancel potential drag and allow scroll on iOS or other touch devices
     clearTimeout(this.tapTimeout);
   }
 
-  _onTouchStart(event) {
+  [onTouchStart](event) {
+    const container = closest(event.target, this.containers);
+
+    if (!container) {
+      return;
+    }
+
     event.preventDefault();
-    const container = event.currentTarget;
 
     // detect if body is scrolling on iOS
-    document.addEventListener('scroll', this._onScroll);
-    container.addEventListener('contextmenu', _onContextMenu);
+    document.addEventListener('scroll', this[onScroll]);
+    container.addEventListener('contextmenu', onContextMenu);
+
+    this.currentContainer = container;
 
     this.currentScrollableParent = closest(container, (element) => element.offsetHeight < element.scrollHeight);
 
     if (this.currentScrollableParent) {
-      this.currentScrollableParent.addEventListener('scroll', this._onScroll);
+      this.currentScrollableParent.addEventListener('scroll', this[onScroll]);
     }
 
-    this.tapTimeout = setTimeout(this._onTouchHold(event, container), this.options.delay);
+    this.tapTimeout = setTimeout(this[onTouchHold](event, container), this.options.delay);
   }
 
-  _onTouchHold(event, container) {
+  [onTouchHold](event, container) {
     return () => {
       const touch = event.touches[0] || event.changedTouches[0];
       const target = event.target;
@@ -81,15 +104,22 @@ export default class TouchSensor extends Sensor {
 
       this.currentContainer = container;
       this.dragging = !dragStartEvent.canceled();
+
+      if (this.dragging) {
+        document.addEventListener('touchend', this[onTouchEnd], {passive: false});
+        document.addEventListener('touchcancel', this[onTouchEnd], {passive: false});
+        document.addEventListener('touchmove', this[onTouchMove], {passive: false});
+      }
     };
   }
 
-  _onTouchMove(event) {
+  [onTouchMove](event) {
     if (!this.dragging) {
       return;
     }
 
     event.stopPropagation();
+    event.preventDefault();
 
     const touch = event.touches[0] || event.changedTouches[0];
     const target = document.elementFromPoint(touch.pageX - window.scrollX, touch.pageY - window.scrollY);
@@ -105,14 +135,18 @@ export default class TouchSensor extends Sensor {
     this.trigger(this.currentContainer, dragMoveEvent);
   }
 
-  _onTouchEnd(event) {
+  [onTouchEnd](event) {
+    if (!this.dragging) {
+      return;
+    }
+
     const container = event.currentTarget;
 
-    document.removeEventListener('scroll', this._onScroll);
-    container.removeEventListener('contextmenu', _onContextMenu);
+    document.removeEventListener('scroll', this[onScroll]);
+    container.removeEventListener('contextmenu', onContextMenu);
 
     if (this.currentScrollableParent) {
-      this.currentScrollableParent.removeEventListener('scroll', this._onScroll);
+      this.currentScrollableParent.removeEventListener('scroll', this[onScroll]);
     }
 
     clearTimeout(this.tapTimeout);
@@ -135,11 +169,15 @@ export default class TouchSensor extends Sensor {
 
     this.trigger(this.currentContainer, dragStopEvent);
 
+    document.removeEventListener('touchend', this[onTouchEnd], {passive: false});
+    document.removeEventListener('touchcancel', this[onTouchEnd], {passive: false});
+    document.removeEventListener('touchmove', this[onTouchMove], {passive: false});
+
     this.currentContainer = null;
     this.dragging = false;
   }
 }
 
-function _onContextMenu(event) {
+function onContextMenu(event) {
   event.preventDefault();
 }
